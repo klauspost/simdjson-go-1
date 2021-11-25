@@ -49,6 +49,21 @@ func (a *Array) FirstType() Type {
 	return iter.PeekNext()
 }
 
+// Index forwards idx entries and returns the new iterator.
+func (a *Array) Index(idx int, dst *Iter) (*Iter, error) {
+	if dst == nil {
+		dst = &Iter{}
+	}
+	dst.tape = a.tape
+	dst.off = a.off
+	for i := 0; i < idx; i++ {
+		if dst.Advance() == TypeNone {
+			return dst, errors.New("index past array end")
+		}
+	}
+	return dst, nil
+}
+
 // MarshalJSON will marshal the entire remaining scope of the iterator.
 func (a *Array) MarshalJSON() ([]byte, error) {
 	return a.MarshalJSONBuffer(nil)
