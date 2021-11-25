@@ -224,7 +224,7 @@ func (o *Object) NextElementBytes(dst *Iter) (name []byte, t Type, err error) {
 	}
 	// Advance must be string or end of object
 	v := o.tape.Tape[o.off]
-	switch Tag(v >> 56) {
+	switch Tag(v) {
 	case TagString:
 		// Read name:
 		// We want name and at least one value.
@@ -232,7 +232,7 @@ func (o *Object) NextElementBytes(dst *Iter) (name []byte, t Type, err error) {
 			return nil, TypeNone, fmt.Errorf("parsing object element name: unexpected end of tape")
 		}
 		length := o.tape.Tape[o.off+1]
-		offset := v & JSONVALUEMASK
+		offset := v >> JSONVALUEOFFSET
 		name, err = o.tape.stringByteAt(offset, length)
 		if err != nil {
 			return nil, TypeNone, fmt.Errorf("parsing object element name: %w", err)
@@ -241,7 +241,7 @@ func (o *Object) NextElementBytes(dst *Iter) (name []byte, t Type, err error) {
 	case TagObjectEnd:
 		return nil, TypeNone, nil
 	default:
-		return nil, TypeNone, fmt.Errorf("object: unexpected tag %c", byte(v>>56))
+		return nil, TypeNone, fmt.Errorf("object: unexpected tag %c", byte(v))
 	}
 
 	// Read element type
@@ -250,8 +250,8 @@ func (o *Object) NextElementBytes(dst *Iter) (name []byte, t Type, err error) {
 	o.off++
 
 	// Set dst
-	dst.cur = v & JSONVALUEMASK
-	dst.t = Tag(v >> 56)
+	dst.cur = v >> JSONVALUEOFFSET
+	dst.t = Tag(v)
 	dst.off = o.off
 	dst.tape = o.tape
 	dst.calcNext(false)

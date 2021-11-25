@@ -72,6 +72,7 @@ func BenchmarkMesh_pretty(b *testing.B)    { benchmarkFromFile(b, "mesh.pretty")
 func BenchmarkNumbers(b *testing.B)        { benchmarkFromFile(b, "numbers") }
 func BenchmarkRandom(b *testing.B)         { benchmarkFromFile(b, "random") }
 func BenchmarkTwitter(b *testing.B)        { benchmarkFromFile(b, "twitter") }
+func BenchmarkTwitterSmall(b *testing.B)   { benchmarkFromFile(b, "twitter-small") }
 func BenchmarkTwitterescaped(b *testing.B) { benchmarkFromFile(b, "twitterescaped") }
 func BenchmarkUpdate_center(b *testing.B)  { benchmarkFromFile(b, "update-center") }
 
@@ -121,6 +122,7 @@ func BenchmarkEncodingJsonMesh_pretty(b *testing.B)    { benchmarkEncodingJson(b
 func BenchmarkEncodingJsonNumbers(b *testing.B)        { benchmarkEncodingJson(b, "numbers") }
 func BenchmarkEncodingJsonRandom(b *testing.B)         { benchmarkEncodingJson(b, "random") }
 func BenchmarkEncodingJsonTwitter(b *testing.B)        { benchmarkEncodingJson(b, "twitter") }
+func BenchmarkEncodingJsonTwitterSmall(b *testing.B)   { benchmarkEncodingJson(b, "twitter-small") }
 func BenchmarkEncodingJsonTwitterescaped(b *testing.B) { benchmarkEncodingJson(b, "twitterescaped") }
 func BenchmarkEncodingJsonUpdate_center(b *testing.B)  { benchmarkEncodingJson(b, "update-center") }
 
@@ -136,5 +138,6 @@ func BenchmarkJsoniterMesh_pretty(b *testing.B)    { benchmarkJsoniter(b, "mesh.
 func BenchmarkJsoniterNumbers(b *testing.B)        { benchmarkJsoniter(b, "numbers") }
 func BenchmarkJsoniterRandom(b *testing.B)         { benchmarkJsoniter(b, "random") }
 func BenchmarkJsoniterTwitter(b *testing.B)        { benchmarkJsoniter(b, "twitter") }
+func BenchmarkJsoniterTwitterSmall(b *testing.B)   { benchmarkJsoniter(b, "twitter-small") }
 func BenchmarkJsoniterTwitterescaped(b *testing.B) { benchmarkJsoniter(b, "twitterescaped") }
 func BenchmarkJsoniterUpdate_center(b *testing.B)  { benchmarkJsoniter(b, "update-center") }

@@ -240,7 +240,10 @@ func verifyDemoNdjson(pj internalParsedJson, t *testing.T, object int) {
 		//	c = "nul"
 		//}
 		//fmt.Printf("{%s, 0x%x},\n", c, tp&0xffffffffffffff)
-		expected := tc.expected[ii].val | (uint64(tc.expected[ii].c) << 56)
+		expected := tc.expected[ii].val
+		if tc.expected[ii].c != 0 {
+			expected = (tc.expected[ii].val << JSONVALUEOFFSET) | (uint64(tc.expected[ii].c))
+		}
 		if !pj.copyStrings && tp != expected {
 			t.Errorf("verifyDemoNdjson(%d): got: %016x want: %016x", ii, tp, expected)
 		}
@@ -336,7 +339,7 @@ func count_raw_tape(tape []uint64) (count int) {
 
 	for tapeidx := uint64(0); tapeidx < uint64(len(tape)); count++ {
 		tape_val := tape[tapeidx]
-		tapeidx = tape_val & JSONVALUEMASK
+		tapeidx = tape_val >> JSONVALUEOFFSET
 	}
 
 	return

@@ -183,9 +183,12 @@ func TestStage2BuildTape(t *testing.T) {
 			//	c = "nul"
 			//}
 			//fmt.Printf("{%s, 0x%x},\n", c, tp&0xffffffffffffff)
-			expected := tc.expected[ii].val | (uint64(tc.expected[ii].c) << 56)
+			expected := tc.expected[ii].val
+			if tc.expected[ii].c != 0 {
+				expected = (tc.expected[ii].val << JSONVALUEOFFSET) | uint64(tc.expected[ii].c)
+			}
 			if !pj.copyStrings && tp != expected {
-				t.Errorf("TestStage2BuildTape(%d): got: %d want: %d", ii, tp, expected)
+				t.Errorf("%d: TestStage2BuildTape(%d): got: %x want: %x", i, ii, tp, expected)
 			}
 		}
 	}

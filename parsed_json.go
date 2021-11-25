@@ -23,11 +23,11 @@ import (
 	"strconv"
 )
 
-const JSONVALUEMASK = 0xff_ffff_ffff_ffff
-const JSONTAGOFFSET = 56
-const JSONTAGMASK = 0xff << JSONTAGOFFSET
+const JSONVALUEMASK = 0xffff_ffff_ffff_ff00
+const JSONVALUEOFFSET = 8
+const JSONTAGMASK = 0xff
 const STRINGBUFBIT = 0x80_0000_0000_0000
-const STRINGBUFMASK = 0x7fffffffffffff
+const STRINGBUFMASK = 0x7f_ffff_ffff_ffff
 
 const maxdepth = 128
 
@@ -184,8 +184,8 @@ func (i *Iter) Advance() Type {
 	}
 
 	v := i.tape.Tape[i.off]
-	i.cur = v & JSONVALUEMASK
-	i.t = Tag(v >> 56)
+	i.cur = v >> JSONVALUEOFFSET
+	i.t = Tag(v)
 	i.off++
 	i.calcNext(false)
 	if i.addNext < 0 {
@@ -208,8 +208,8 @@ func (i *Iter) AdvanceInto() Tag {
 	}
 
 	v := i.tape.Tape[i.off]
-	i.cur = v & JSONVALUEMASK
-	i.t = Tag(v >> 56)
+	i.cur = v >> JSONVALUEOFFSET
+	i.t = Tag(v)
 	i.off++
 	i.calcNext(true)
 	if i.addNext < 0 {
@@ -264,8 +264,8 @@ func (i *Iter) AdvanceIter(dst *Iter) (Type, error) {
 
 	// Get current value off tape.
 	v := i.tape.Tape[i.off]
-	i.cur = v & JSONVALUEMASK
-	i.t = Tag(v >> 56)
+	i.cur = v >> JSONVALUEOFFSET
+	i.t = Tag(v)
 	i.off++
 	i.calcNext(false)
 	if i.addNext < 0 {
@@ -304,7 +304,7 @@ func (i *Iter) PeekNext() Type {
 	if i.off+i.addNext >= len(i.tape.Tape) {
 		return TypeNone
 	}
-	return TagToType[Tag(i.tape.Tape[i.off+i.addNext]>>56)]
+	return TagToType[Tag(i.tape.Tape[i.off+i.addNext])]
 }
 
 // PeekNextTag will return the tag at the current offset.
@@ -313,7 +313,7 @@ func (i *Iter) PeekNextTag() Tag {
 	if i.off+i.addNext >= len(i.tape.Tape) {
 		return TagEnd
 	}
-	return Tag(i.tape.Tape[i.off+i.addNext] >> 56)
+	return Tag(i.tape.Tape[i.off+i.addNext])
 }
 
 // MarshalJSON will marshal the entire remaining scope of the iterator.
@@ -541,7 +541,7 @@ func (i *Iter) FloatFlags() (float64, FloatFlags, error) {
 func (i *Iter) SetFloat(v float64) error {
 	switch i.t {
 	case TagFloat, TagInteger, TagUint, TagString:
-		i.tape.Tape[i.off-1] = uint64(TagFloat) << JSONTAGOFFSET
+		i.tape.Tape[i.off-1] = uint64(TagFloat)
 		i.tape.Tape[i.off] = math.Float64bits(v)
 		i.t = TagFloat
 		i.cur = 0
@@ -591,7 +591,7 @@ func (i *Iter) Int() (int64, error) {
 func (i *Iter) SetInt(v int64) error {
 	switch i.t {
 	case TagFloat, TagInteger, TagUint, TagString:
-		i.tape.Tape[i.off-1] = uint64(TagInteger) << JSONTAGOFFSET
+		i.tape.Tape[i.off-1] = uint64(TagInteger)
 		i.tape.Tape[i.off] = uint64(v)
 		i.t = TagInteger
 		i.cur = uint64(v)
@@ -642,7 +642,7 @@ func (i *Iter) Uint() (uint64, error) {
 func (i *Iter) SetUInt(v uint64) error {
 	switch i.t {
 	case TagString, TagFloat, TagInteger, TagUint:
-		i.tape.Tape[i.off-1] = uint64(TagUint) << JSONTAGOFFSET
+		i.tape.Tape[i.off-1] = uint64(TagUint)
 		i.tape.Tape[i.off] = v
 		i.t = TagUint
 		i.cur = v
@@ -686,8 +686,8 @@ func (i *Iter) SetString(v string) error {
 func (i *Iter) SetStringBytes(v []byte) error {
 	switch i.t {
 	case TagString, TagFloat, TagInteger, TagUint:
-		i.cur = ((uint64(TagString) << JSONTAGOFFSET) | STRINGBUFBIT) | uint64(len(i.tape.Strings.B))
-		i.tape.Tape[i.off-1] = i.cur
+		i.cur = STRINGBUFBIT | uint64(len(i.tape.Strings.B))
+		i.tape.Tape[i.off-1] = (i.cur << JSONVALUEOFFSET) | uint64(TagString)
 		i.tape.Tape[i.off] = uint64(len(v))
 		i.t = TagString
 		i.tape.Strings.B = append(i.tape.Strings.B, v...)
@@ -806,11 +806,11 @@ func (i *Iter) SetBool(v bool) error {
 		if v {
 			i.t = TagBoolTrue
 			i.cur = 0
-			i.tape.Tape[i.off-1] = uint64(TagBoolTrue) << JSONTAGOFFSET
+			i.tape.Tape[i.off-1] = uint64(TagBoolTrue)
 		} else {
 			i.t = TagBoolFalse
 			i.cur = 0
-			i.tape.Tape[i.off-1] = uint64(TagBoolFalse) << JSONTAGOFFSET
+			i.tape.Tape[i.off-1] = uint64(TagBoolFalse)
 		}
 		return nil
 	}
@@ -824,7 +824,7 @@ func (i *Iter) SetNull() error {
 	case TagBoolTrue, TagBoolFalse, TagNull:
 		i.t = TagNull
 		i.cur = 0
-		i.tape.Tape[i.off-1] = uint64(TagNull) << JSONTAGOFFSET
+		i.tape.Tape[i.off-1] = uint64(TagNull)
 		return nil
 	}
 	return fmt.Errorf("cannot set tag %s to null", i.t.String())
@@ -953,17 +953,22 @@ func (pj *ParsedJson) get_current_loc() uint64 {
 	return uint64(len(pj.Tape))
 }
 
-func (pj *ParsedJson) write_tape(val uint64, c byte) {
-	pj.Tape = append(pj.Tape, val|(uint64(c)<<56))
+func (pj *ParsedJson) writeTape(c byte) {
+	pj.Tape = append(pj.Tape, uint64(c))
+}
+
+// writeTapeWithEmbed will write a tag with an embedded value.
+func (pj *ParsedJson) writeTapeWithEmbed(c Tag, val uint64) {
+	pj.Tape = append(pj.Tape, uint64(c)|(val<<JSONVALUEOFFSET))
 }
 
 // writeTapeTagVal will write a tag with no embedded value and a value to the tape.
 func (pj *ParsedJson) writeTapeTagVal(tag Tag, val uint64) {
-	pj.Tape = append(pj.Tape, uint64(tag)<<56, val)
+	pj.Tape = append(pj.Tape, uint64(tag), val)
 }
 
 func (pj *ParsedJson) writeTapeTagValFlags(tag Tag, val, flags uint64) {
-	pj.Tape = append(pj.Tape, uint64(tag)<<56|flags, val)
+	pj.Tape = append(pj.Tape, uint64(tag)|(flags<<JSONVALUEOFFSET), val)
 }
 
 func (pj *ParsedJson) write_tape_s64(val int64) {
@@ -975,7 +980,7 @@ func (pj *ParsedJson) write_tape_double(d float64) {
 }
 
 func (pj *ParsedJson) annotate_previousloc(saved_loc uint64, val uint64) {
-	pj.Tape[saved_loc] |= val
+	pj.Tape[saved_loc] |= val << JSONVALUEOFFSET
 }
 
 // Tag indicates the data type of a tape entry
@@ -1081,11 +1086,11 @@ func (pj *internalParsedJson) dump_raw_tape() bool {
 	for tapeidx := uint64(0); tapeidx < uint64(len(pj.Tape)); tapeidx++ {
 		howmany := uint64(0)
 		tape_val := pj.Tape[tapeidx]
-		ntype := byte(tape_val >> 56)
+		ntype := byte(tape_val)
 		fmt.Printf("%d : %c", tapeidx, ntype)
 
 		if ntype == 'r' {
-			howmany = tape_val & JSONVALUEMASK
+			howmany = tape_val >> JSONVALUEOFFSET
 		} else {
 			fmt.Errorf("Error: no starting root node?\n")
 			return false
@@ -1099,8 +1104,8 @@ func (pj *internalParsedJson) dump_raw_tape() bool {
 		for ; tapeidx < howmany; tapeidx++ {
 			tape_val = pj.Tape[tapeidx]
 			fmt.Printf("%d : ", tapeidx)
-			ntype := Tag(tape_val >> 56)
-			payload := tape_val & JSONVALUEMASK
+			ntype := Tag(tape_val)
+			payload := tape_val >> JSONVALUEOFFSET
 			switch ntype {
 			case TagString: // we have a string
 				if tapeidx+1 >= howmany {
@@ -1162,8 +1167,8 @@ func (pj *internalParsedJson) dump_raw_tape() bool {
 		}
 
 		tape_val = pj.Tape[tapeidx]
-		payload := tape_val & JSONVALUEMASK
-		ntype = byte(tape_val >> 56)
+		payload := tape_val >> JSONVALUEOFFSET
+		ntype = byte(tape_val)
 		fmt.Printf("%d : %c\t// pointing to %d (start root)\n", tapeidx, ntype, payload)
 	}
 

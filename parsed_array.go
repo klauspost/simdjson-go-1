@@ -117,7 +117,7 @@ func (a *Array) AsFloat() ([]float64, error) {
 
 readArray:
 	for {
-		tag := Tag(a.tape.Tape[a.off] >> 56)
+		tag := Tag(a.tape.Tape[a.off])
 		a.off++
 		switch tag {
 		case TagFloat:
@@ -156,7 +156,7 @@ func (a *Array) AsInteger() ([]int64, error) {
 	dst := make([]int64, 0, lenEst)
 readArray:
 	for {
-		tag := Tag(a.tape.Tape[a.off] >> 56)
+		tag := Tag(a.tape.Tape[a.off])
 		a.off++
 		switch tag {
 		case TagFloat:
@@ -208,7 +208,7 @@ func (a *Array) AsUint64() ([]uint64, error) {
 	dst := make([]uint64, 0, lenEst)
 readArray:
 	for {
-		tag := Tag(a.tape.Tape[a.off] >> 56)
+		tag := Tag(a.tape.Tape[a.off])
 		a.off++
 		switch tag {
 		case TagFloat:

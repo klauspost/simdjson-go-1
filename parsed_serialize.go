@@ -283,8 +283,8 @@ func (s *Serializer) Serialize(dst []byte, pj ParsedJson) []byte {
 			s.valuesBuf = s.valuesBuf[:0]
 		}
 		entry := pj.Tape[off]
-		ntype := Tag(entry >> 56)
-		payload := entry & JSONVALUEMASK
+		ntype := Tag(entry)
+		payload := entry >> JSONVALUEOFFSET
 
 		switch ntype {
 		case TagString:
@@ -583,7 +583,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 		}
 		tag := Tag(t)
 
-		tagDst := uint64(t) << 56
+		tagDst := uint64(t)
 		switch tag {
 		case TagString:
 			if len(values) < 16 {
@@ -593,7 +593,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 			sLen := binary.LittleEndian.Uint64(values[8:16])
 			values = values[16:]
 
-			dst.Tape[off] = tagDst | sOffset
+			dst.Tape[off] = tagDst | (sOffset << JSONVALUEOFFSET)
 			dst.Tape[off+1] = sLen
 			off += 2
 		case TagFloat, TagInteger, TagUint:
@@ -630,7 +630,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 
 			dst.Tape[off] = tagDst | val
 			// Write closing...
-			dst.Tape[val-1] = uint64(tagOpenToClose[tag])<<56 | uint64(off)
+			dst.Tape[val-1] = uint64(tagOpenToClose[tag]) | uint64(off)<<JSONVALUEOFFSET
 
 			off++
 		case TagRoot:
@@ -651,7 +651,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 		case TagObjectEnd, TagArrayEnd:
 			// This should already have been written.
 			if dst.Tape[off]&JSONTAGMASK != tagDst {
-				return dst, fmt.Errorf("reading %v, offset:%d, start tag did not match %x != %x", tag, off, dst.Tape[off]>>56, uint8(tag))
+				return dst, fmt.Errorf("reading %v, offset:%d, start tag did not match %x != %x", tag, off, dst.Tape[off], uint8(tag))
 			}
 			off++
 		default:

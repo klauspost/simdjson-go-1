@@ -90,7 +90,7 @@ func parseString(pj *ParsedJson, idx uint64, maxStringSize uint64, needCopy bool
 		return false
 	}
 	if !needCopy {
-		pj.write_tape(idx+1, '"')
+		pj.writeTapeWithEmbed(TagString, idx+1)
 	} else {
 		// Make sure we account for at least 32 bytes additional space due to
 		strs := pj.Strings.B
@@ -106,7 +106,7 @@ func parseString(pj *ParsedJson, idx uint64, maxStringSize uint64, needCopy bool
 		}
 		start := len(strs)
 		_ = parseStringSimd(buf, &pj.Strings.B) // We can safely ignore the result since we validate above
-		pj.write_tape(uint64(STRINGBUFBIT+start), '"')
+		pj.writeTapeWithEmbed(TagString, uint64(start)|STRINGBUFBIT)
 		size = uint64(len(pj.Strings.B) - start)
 	}
 	// put length onto the tape
@@ -170,7 +170,7 @@ func unifiedMachine(buf []byte, pj *internalParsedJson) bool {
 	////////////////////////////// START STATE /////////////////////////////
 	pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
 
-	pj.write_tape(0, 'r') // r for root, 0 is going to get overwritten
+	pj.writeTape('r') // r for root, 0 is going to get overwritten
 	// the root is used, if nothing else, to capture the size of the tape
 
 	if done, idx = updateChar(pj, idx); done {
@@ -180,11 +180,11 @@ continueRoot:
 	switch buf[idx] {
 	case '{':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 		goto object_begin
 	case '[':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 		goto arrayBegin
 	default:
 		goto fail
@@ -214,11 +214,11 @@ startContinue:
 		pj.containingScopeOffset = pj.containingScopeOffset[:len(pj.containingScopeOffset)-1]
 
 		pj.annotate_previousloc(offset>>retAddressShift, pj.get_current_loc()+addOneForRoot)
-		pj.write_tape(offset>>retAddressShift, 'r') // r is root
+		pj.writeTapeWithEmbed(TagRoot, offset>>retAddressShift) // r is root
 
 		// And open a new root
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
-		pj.write_tape(0, 'r') // r for root, 0 is going to get overwritten
+		pj.writeTape('r') // r for root, 0 is going to get overwritten
 
 		goto continueRoot
 	}
@@ -261,19 +261,19 @@ object_key_state:
 		if !isValidTrueAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 
 	case 'f':
 		if !isValidFalseAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 
 	case 'n':
 		if !isValidNullAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 
 	case '-':
 		if !addNumber(buf[idx:], &pj.ParsedJson) {
@@ -282,13 +282,13 @@ object_key_state:
 
 	case '{':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressObjectConst)
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 		// we have not yet encountered } so we need to come back for it
 		goto object_begin
 
 	case '[':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressObjectConst)
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 		// we have not yet encountered } so we need to come back for it
 		goto arrayBegin
 
@@ -333,7 +333,7 @@ scopeEnd:
 	// drop last element
 	pj.containingScopeOffset = pj.containingScopeOffset[:len(pj.containingScopeOffset)-1]
 
-	pj.write_tape(offset>>retAddressShift, buf[idx])
+	pj.writeTapeWithEmbed(Tag(buf[idx]), offset>>retAddressShift)
 	pj.annotate_previousloc(offset>>retAddressShift, pj.get_current_loc())
 
 	/* goto saved_state*/
@@ -367,19 +367,19 @@ mainArraySwitch:
 		if !isValidTrueAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 
 	case 'f':
 		if !isValidFalseAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 
 	case 'n':
 		if !isValidNullAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.write_tape(0, buf[idx])
+		pj.writeTape(buf[idx])
 		/* goto array_continue */
 
 	case '-':
@@ -390,13 +390,13 @@ mainArraySwitch:
 	case '{':
 		// we have not yet encountered ] so we need to come back for it
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressArrayConst)
-		pj.write_tape(0, buf[idx]) //  here the compilers knows what c is so this gets optimized
+		pj.writeTape(buf[idx]) //  here the compilers knows what c is so this gets optimized
 		goto object_begin
 
 	case '[':
 		// we have not yet encountered ] so we need to come back for it
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressArrayConst)
-		pj.write_tape(0, buf[idx]) // here the compilers knows what c is so this gets optimized
+		pj.writeTape(buf[idx]) // here the compilers knows what c is so this gets optimized
 		goto arrayBegin
 
 	default:
@@ -439,7 +439,7 @@ succeed:
 	}
 
 	pj.annotate_previousloc(offset>>retAddressShift, pj.get_current_loc()+addOneForRoot)
-	pj.write_tape(offset>>retAddressShift, 'r') // r is root
+	pj.writeTapeWithEmbed(TagRoot, offset>>retAddressShift) // r is root
 
 	pj.isvalid = true
 	return true
