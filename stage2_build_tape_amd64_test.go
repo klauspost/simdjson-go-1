@@ -187,6 +187,9 @@ func TestStage2BuildTape(t *testing.T) {
 			if tc.expected[ii].c != 0 {
 				expected = (tc.expected[ii].val << JSONVALUEOFFSET) | uint64(tc.expected[ii].c)
 			}
+			if tc.expected[ii].c == '@' {
+				expected = (tc.expected[ii].val) | uint64(tc.expected[ii].c)<<56
+			}
 			if !pj.copyStrings && tp != expected {
 				t.Errorf("%d: TestStage2BuildTape(%d): got: %x want: %x", i, ii, tp, expected)
 			}

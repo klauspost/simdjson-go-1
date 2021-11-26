@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"runtime"
 	"sync"
 	"unsafe"
 
@@ -36,7 +35,7 @@ const (
 	stringBits        = 14
 	stringSize        = 1 << stringBits
 	stringmask        = stringSize - 1
-	serializedVersion = 2
+	serializedVersion = 3
 )
 
 // Serializer allows to serialize parsed json and read it back.
@@ -52,8 +51,11 @@ type Serializer struct {
 	valuesCompBuf []byte
 	tagsCompBuf   []byte
 
+	valuesBuffer bytes.Buffer
+
 	compValues, compTags uint8
 	compStrings          uint8
+	cmode                CompressMode
 	fasterComp           bool
 
 	// Deduplicated strings
@@ -112,83 +114,7 @@ func (s *Serializer) CompressMode(c CompressMode) {
 	default:
 		panic("unknown compression mode")
 	}
-}
-
-func serializeNDStream(dst io.Writer, in <-chan Stream, reuse chan<- *ParsedJson, concurrency int, comp CompressMode) error {
-	if concurrency <= 0 {
-		concurrency = (runtime.GOMAXPROCS(0) + 1) / 2
-	}
-	var wg sync.WaitGroup
-	wg.Add(concurrency)
-	type workload struct {
-		pj  *ParsedJson
-		dst chan []byte
-	}
-	var readCh = make(chan workload, concurrency)
-	var writeCh = make(chan chan []byte, concurrency)
-	dstPool := sync.Pool{
-		New: func() interface{} {
-			return make([]byte, 0, 64<<10)
-		},
-	}
-	for i := 0; i < concurrency; i++ {
-		go func() {
-			s := NewSerializer()
-			s.CompressMode(comp)
-			defer wg.Done()
-			for input := range readCh {
-				res := s.Serialize(dstPool.Get().([]byte)[:0], *input.pj)
-				input.dst <- res
-				select {
-				case reuse <- input.pj:
-				default:
-				}
-			}
-		}()
-	}
-	var writeErr error
-	var wwg sync.WaitGroup
-	wwg.Add(1)
-	go func() {
-		defer wwg.Done()
-		for block := range writeCh {
-			b := <-block
-			var n int
-			n, writeErr = dst.Write(b)
-			if n != len(b) {
-				writeErr = io.ErrShortWrite
-			}
-		}
-	}()
-	var readErr error
-	var rwg sync.WaitGroup
-	rwg.Add(1)
-	go func() {
-		defer rwg.Done()
-		defer close(readCh)
-		for block := range in {
-			if block.Error != nil {
-				readErr = block.Error
-			}
-			readCh <- workload{
-				pj:  block.Value,
-				dst: make(chan []byte, 0),
-			}
-		}
-	}()
-	rwg.Wait()
-	if readErr != nil {
-		wg.Wait()
-		close(writeCh)
-		wwg.Wait()
-		return readErr
-	}
-	// Read done, wait for workers...
-	wg.Wait()
-	close(writeCh)
-	// Wait for writer...
-	wwg.Wait()
-	return writeErr
+	s.cmode = c
 }
 
 const (
@@ -232,8 +158,6 @@ func (s *Serializer) Serialize(dst []byte, pj ParsedJson) []byte {
 	//
 	// If there are any values left as tag or value, it is considered invalid.
 
-	var wg sync.WaitGroup
-
 	// Reset lookup table.
 	// Offsets are offset by 1, so 0 indicates an unfilled entry.
 	for i := range s.stringsTable[:] {
@@ -255,7 +179,7 @@ func (s *Serializer) Serialize(dst []byte, pj ParsedJson) []byte {
 	valWr, valDone := encBlock(s.compValues, s.valuesCompBuf, s.fasterComp)
 	tagWr, tagDone := encBlock(s.compTags, s.tagsCompBuf, s.fasterComp)
 	// Pessimistically allocate for maximum possible size.
-	if cap(s.tagsBuf) <= tagBufSize {
+	if cap(s.tagsBuf) < tagBufSize {
 		s.tagsBuf = make([]byte, tagBufSize)
 	}
 	s.tagsBuf = s.tagsBuf[:tagBufSize]
@@ -330,7 +254,6 @@ func (s *Serializer) Serialize(dst []byte, pj ParsedJson) []byte {
 		case TagObjectEnd, TagArrayEnd, TagEnd:
 			// Value can be deducted from start tag or no value.
 		default:
-			wg.Wait()
 			panic(fmt.Errorf("unknown tag: %d", int(ntype)))
 		}
 		s.tagsBuf[tagsOff] = uint8(ntype)
@@ -345,35 +268,51 @@ func (s *Serializer) Serialize(dst []byte, pj ParsedJson) []byte {
 		rawValues += len(s.valuesBuf)
 		valWr.Write(s.valuesBuf)
 	}
-	wg.Add(3)
-	go func() {
+	if s.cmode != CompressNone {
+		var wg sync.WaitGroup
+		wg.Add(3)
+		go func() {
+			var err error
+			s.tagsCompBuf, err = tagDone()
+			if err != nil {
+				panic(err)
+			}
+			wg.Done()
+		}()
+		go func() {
+			var err error
+			s.valuesCompBuf, err = valDone()
+			if err != nil {
+				panic(err)
+			}
+			wg.Done()
+		}()
+		go func() {
+			var err error
+			s.sMsg, err = msgDone()
+			if err != nil {
+				panic(err)
+			}
+			wg.Done()
+		}()
+
+		// Wait for compressors
+		wg.Wait()
+	} else {
 		var err error
 		s.tagsCompBuf, err = tagDone()
 		if err != nil {
 			panic(err)
 		}
-		wg.Done()
-	}()
-	go func() {
-		var err error
 		s.valuesCompBuf, err = valDone()
 		if err != nil {
 			panic(err)
 		}
-		wg.Done()
-	}()
-	go func() {
-		var err error
 		s.sMsg, err = msgDone()
 		if err != nil {
 			panic(err)
 		}
-		wg.Done()
-	}()
-
-	// Wait for compressors
-	wg.Wait()
-
+	}
 	// Version
 	dst = append(dst, serializedVersion)
 
@@ -462,11 +401,14 @@ func (s *Serializer) splitBlocks(r io.Reader, out chan []byte) error {
 // And optional destination can be provided.
 func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, error) {
 	br := bytes.NewBuffer(src)
-
+	compatFloat := false
 	if v, err := br.ReadByte(); err != nil {
 		return dst, err
 	} else if v > serializedVersion {
-		// v2 reads v1.
+		// v1 first released version
+		// v2 adds FloatWithFlag to output
+		compatFloat = v == 2
+		// v3 changes FloatWithFlag
 		return dst, errors.New("unknown version")
 	}
 
@@ -610,6 +552,10 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 				return dst, fmt.Errorf("reading %v: no values left", tag)
 			}
 			dst.Tape[off] = binary.LittleEndian.Uint64(values[:8])
+			if compatFloat {
+				val := dst.Tape[off]
+				dst.Tape[off] = val<<JSONVALUEOFFSET | uint64(TagFloat)
+			}
 			dst.Tape[off+1] = binary.LittleEndian.Uint64(values[8:16])
 			values = values[16:]
 			off += 2
@@ -628,7 +574,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 				return dst, fmt.Errorf("%v extends beyond tape (%d). offset:%d", tag, len(dst.Tape), val)
 			}
 
-			dst.Tape[off] = tagDst | val
+			dst.Tape[off] = tagDst | (val << JSONVALUEOFFSET)
 			// Write closing...
 			dst.Tape[val-1] = uint64(tagOpenToClose[tag]) | uint64(off)<<JSONVALUEOFFSET
 
@@ -645,7 +591,7 @@ func (s *Serializer) Deserialize(src []byte, dst *ParsedJson) (*ParsedJson, erro
 				return dst, fmt.Errorf("%v extends beyond tape (%d). offset:%d", tag, len(dst.Tape), val)
 			}
 
-			dst.Tape[off] = tagDst | val
+			dst.Tape[off] = tagDst | (val << JSONVALUEOFFSET)
 
 			off++
 		case TagObjectEnd, TagArrayEnd:

@@ -233,11 +233,11 @@ func TestParseNumber(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tag, val, flags := parseNumber([]byte(fmt.Sprintf(`%s:`, tc.input)))
-		if tag != tc.wantTag {
+		tag, val := parseNumber([]byte(fmt.Sprintf(`%s:`, tc.input)))
+		if Tag(tag) != tc.wantTag {
 			t.Errorf("TestParseNumber: got: %v want: %v", tag, tc.wantTag)
 		}
-		switch tag {
+		switch Tag(tag) {
 		case TagFloat:
 			got := math.Float64frombits(val)
 			if !closeEnough(got, tc.expectedD) {
@@ -252,8 +252,8 @@ func TestParseNumber(t *testing.T) {
 				t.Errorf("TestParseNumber: got: %d want: %d", val, tc.expectedU)
 			}
 		}
-		if flags != uint64(tc.flags) {
-			t.Errorf("TestParseNumber flags; got: %d want: %d", flags, tc.flags)
+		if tag>>JSONVALUEOFFSET != uint64(tc.flags) {
+			t.Errorf("TestParseNumber flags; got: %d want: %d", tag>>JSONVALUEOFFSET, tc.flags)
 		}
 	}
 }
@@ -304,13 +304,13 @@ func TestParseInt64(t *testing.T) {
 		test := &parseInt64Tests[i]
 		t.Run(test.in, func(t *testing.T) {
 
-			tag, val, _ := parseNumber([]byte(fmt.Sprintf(`%s:`, test.in)))
-			if tag != test.tag {
+			tag, val := parseNumber([]byte(fmt.Sprintf(`%s:`, test.in)))
+			if Tag(tag) != test.tag {
 				// Ignore intentionally bad syntactical errors
 				t.Errorf("TestParseInt64: got: %v want: %v", tag, test.tag)
 				return // skip testing the rest for this test case
 			}
-			if tag == TagInteger && int64(val) != test.out {
+			if Tag(tag) == TagInteger && int64(val) != test.out {
 				// Ignore intentionally wrong conversions
 				t.Errorf("TestParseInt64: got value: %v want: %v", int64(val), test.out)
 			}
@@ -487,8 +487,8 @@ func TestParseFloat64(t *testing.T) {
 	for i := 0; i < len(atoftests); i++ {
 		test := &atoftests[i]
 		t.Run(test.in, func(t *testing.T) {
-			tag, val, _ := parseNumber([]byte(fmt.Sprintf(`%s:`, test.in)))
-			switch tag {
+			tag, val := parseNumber([]byte(fmt.Sprintf(`%s:`, test.in)))
+			switch Tag(tag) {
 			case TagEnd:
 				if test.err == nil {
 					t.Errorf("TestParseFloat64: got error, none")

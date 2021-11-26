@@ -71,11 +71,14 @@ func findStructuralIndices(buf []byte, pj *internalParsedJson) bool {
 	position := ^uint64(0)
 	stripped_index := ^uint64(0)
 
-	for len(buf) > 0 {
+	index := indexChan{}
+	var paddedBuf [128]byte
 
-		index := indexChan{}
+	for len(buf) > 0 {
 		offset := atomic.AddUint64(&pj.buffersOffset, 1)
-		index.indexes = &pj.buffers[offset%indexSlots]
+		index = indexChan{
+			indexes: &pj.buffers[offset%indexSlots],
+		}
 
 		// In case last index during previous round was stripped back, put it back
 		if stripped_index != ^uint64(0) {
@@ -93,7 +96,6 @@ func findStructuralIndices(buf []byte, pj *internalParsedJson) bool {
 		// Check if we have at most a single iteration of 64 bytes left, tag on to previous invocation
 		if uint64(len(buf))-processed <= 64 {
 			// Process last 64 bytes in larger buffer (to safeguard against reading beyond the end of the buffer)
-			paddedBuf := [128]byte{}
 			copy(paddedBuf[:], buf[processed:])
 			paddedBytes := uint64(len(buf)) - processed
 			processed += f(paddedBuf[:paddedBytes], &prev_iter_ends_odd_backslash,

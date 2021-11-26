@@ -115,11 +115,11 @@ func parseString(pj *ParsedJson, idx uint64, maxStringSize uint64, needCopy bool
 }
 
 func addNumber(buf []byte, pj *ParsedJson) bool {
-	tag, val, flags := parseNumber(buf)
-	if tag == TagEnd {
+	tag, val := parseNumber(buf)
+	if tag == 0 {
 		return false
 	}
-	pj.writeTapeTagValFlags(tag, val, flags)
+	pj.writeTapeTagValFlags(tag, val)
 	return true
 }
 
@@ -180,11 +180,11 @@ continueRoot:
 	switch buf[idx] {
 	case '{':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
-		pj.writeTape(buf[idx])
+		pj.writeTape('{')
 		goto object_begin
 	case '[':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressStartConst)
-		pj.writeTape(buf[idx])
+		pj.writeTape('[')
 		goto arrayBegin
 	default:
 		goto fail
@@ -261,19 +261,19 @@ object_key_state:
 		if !isValidTrueAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('t')
 
 	case 'f':
 		if !isValidFalseAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('f')
 
 	case 'n':
 		if !isValidNullAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('n')
 
 	case '-':
 		if !addNumber(buf[idx:], &pj.ParsedJson) {
@@ -282,13 +282,13 @@ object_key_state:
 
 	case '{':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressObjectConst)
-		pj.writeTape(buf[idx])
+		pj.writeTape('{')
 		// we have not yet encountered } so we need to come back for it
 		goto object_begin
 
 	case '[':
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressObjectConst)
-		pj.writeTape(buf[idx])
+		pj.writeTape('[')
 		// we have not yet encountered } so we need to come back for it
 		goto arrayBegin
 
@@ -367,19 +367,19 @@ mainArraySwitch:
 		if !isValidTrueAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('t')
 
 	case 'f':
 		if !isValidFalseAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('f')
 
 	case 'n':
 		if !isValidNullAtom(buf[idx:]) {
 			goto fail
 		}
-		pj.writeTape(buf[idx])
+		pj.writeTape('n')
 		/* goto array_continue */
 
 	case '-':
@@ -390,13 +390,13 @@ mainArraySwitch:
 	case '{':
 		// we have not yet encountered ] so we need to come back for it
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressArrayConst)
-		pj.writeTape(buf[idx]) //  here the compilers knows what c is so this gets optimized
+		pj.writeTape('{') //  here the compilers knows what c is so this gets optimized
 		goto object_begin
 
 	case '[':
 		// we have not yet encountered ] so we need to come back for it
 		pj.containingScopeOffset = append(pj.containingScopeOffset, (pj.get_current_loc()<<retAddressShift)|retAddressArrayConst)
-		pj.writeTape(buf[idx]) // here the compilers knows what c is so this gets optimized
+		pj.writeTape('[') // here the compilers knows what c is so this gets optimized
 		goto arrayBegin
 
 	default:

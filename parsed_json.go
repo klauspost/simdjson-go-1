@@ -23,7 +23,6 @@ import (
 	"strconv"
 )
 
-const JSONVALUEMASK = 0xffff_ffff_ffff_ff00
 const JSONVALUEOFFSET = 8
 const JSONTAGMASK = 0xff
 const STRINGBUFBIT = 0x80_0000_0000_0000
@@ -344,7 +343,7 @@ writeloop:
 		if stack[len(stack)-1] == stackObject && i.t != TagObjectEnd {
 			sb, err := i.StringBytes()
 			if err != nil {
-				return nil, fmt.Errorf("expected key within object: %w", err)
+				return nil, fmt.Errorf("expected key within object: %w, Tag:%s", err, string(i.t))
 			}
 			dst = append(dst, '"')
 			dst = escapeBytes(dst, sb)
@@ -967,8 +966,8 @@ func (pj *ParsedJson) writeTapeTagVal(tag Tag, val uint64) {
 	pj.Tape = append(pj.Tape, uint64(tag), val)
 }
 
-func (pj *ParsedJson) writeTapeTagValFlags(tag Tag, val, flags uint64) {
-	pj.Tape = append(pj.Tape, uint64(tag)|(flags<<JSONVALUEOFFSET), val)
+func (pj *ParsedJson) writeTapeTagValFlags(tag, val uint64) {
+	pj.Tape = append(pj.Tape, tag, val)
 }
 
 func (pj *ParsedJson) write_tape_s64(val int64) {
